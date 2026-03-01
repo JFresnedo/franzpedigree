@@ -1,0 +1,23 @@
+# Build artefacts
+*.o
+*.a
+*Po
+.deps/
+config.h
+config.log
+config.status
+stamp-h1
+src/FRANz
+src/FRANz_sim
+t/dag_tests
+t/dag_tests2
+t/io_tests
+t_prob_tests
+t/ll_tests
+t/utils_tests
+t/hwe_tests
+t/mcmc_tests
+t/cervus_tests
+t/mlrelate_tests
+# Autotools generated (we DO commit Makefile.in but NOT these)
+autom4te.cache/

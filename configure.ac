@@ -4,7 +4,7 @@
 AC_PREREQ(2.61)
 AC_INIT(FRANz, [2.0.0], [markus@bioinf.uni-leipzig.de] )
 AC_CONFIG_SRCDIR([src/dataio.h])
-AM_INIT_AUTOMAKE
+AM_INIT_AUTOMAKE([subdir-objects])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_HEADER([config.h])
 
