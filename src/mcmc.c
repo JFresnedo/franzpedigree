@@ -16,9 +16,10 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
- * Markus Riester, markus@bioinf.uni-leipzig.de */
+ * Markus Riester, markus@bioinf.uni-leipzig.de 
+ * Updated to PSIX.1-2001 by Jonathan Fresnedo Ramirez. fresnedoramirez.1@osu.edu*/
 
-#define _POSIX_C_SOURCE 1
+#define _POSIX_C_SOURCE 200112L
 #include "macros.h"
 
 #include <stdio.h>

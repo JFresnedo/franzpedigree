@@ -53,6 +53,7 @@ dag_tests2_CFLAGS = -g -I $(top_srcdir)/src -DADJLIST
 ll_tests_CFLAGS  = $(dag_tests_CFLAGS)
 
 utils_tests_CFLAGS  = $(dag_tests_CFLAGS)
+utils_tests_LDADD	= ../libdir/dcmt/lib/libdcmt.a -lm
 hwe_tests_CFLAGS  = $(dag_tests_CFLAGS)
 
 io_tests_CFLAGS = $(dag_tests_CFLAGS) -DFILENAME='"$(top_srcdir)/t/testdata/EsCastel.dat"' \

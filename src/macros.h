@@ -225,8 +225,13 @@
 
 /* compare two floats */
 #define CMP_FLOAT(fa, fb) ((fabsf((fa)-(fb)) < FLT_EPSILON)?1:0)
-/* compare two doubles */
-#define CMP_DBL(fa, fb) ((fabs((fa)-(fb)) < FLT_EPSILON)?1:0)
+/* compare two doubles with relative tolerance.
+ * Scales allowed difference to the magnitude of the operands, making the
+ * macro correct for both small values (~1e-6) and large ones (LOD scores
+ * ~20). The +1e-30 guard prevents division-by-zero when both values are
+ * effectively zero. */
+#define CMP_DBL(fa, fb) \
+    ((fabs((fa)-(fb)) <= 1e-6 * (0.5 * (fabs(fa) + fabs(fb)) + 1e-30))?1:0)
 
 #if __INTEL_COMPILER
 /* Disable ICC's remark #1419: external declaration in primary source file       *
