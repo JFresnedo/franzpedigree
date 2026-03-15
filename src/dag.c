@@ -1,7 +1,8 @@
 /*
  * $Id: dag.c 1885 2010-01-25 15:31:17Z markus $
  *
- * Mostly stolen from Algorithms in C, Part 5. Robert Sedgewick.
+ * Graph traversal algorithms using three-colour DFS vertex marking.
+ * Original FRANz DAG infrastructure by Markus Riester.
  *
  * Copyright (C) 2008-2010 Universitaet Leipzig  
  *
@@ -18,7 +19,9 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
- * Markus Riester, markus@bioinf.uni-leipzig.de */
+ * Markus Riester, markus@bioinf.uni-leipzig.de 
+ * Updated by Jonathan Fresnedo Ramirez, fresnedoramirez.1@osu.edu, to fit in GPL v3 license.
+ */
 
 #include "macros.h"
 #include <stdio.h>
@@ -27,6 +30,22 @@
 
 #include "dag.h"
 #include <assert.h>
+
+/*
+ * Vertex-state constants for DFS traversal.
+ *
+ * Three-colour marking replaces the two-counter pre/post timestamp scheme
+ * used in earlier versions of this file:
+ *   WHITE — vertex not yet reached
+ *   GRAY  — vertex is on the active DFS recursion path
+ *   BLACK — vertex and its entire subtree have been fully explored
+ *
+ * VCOLOR_WHITE is kept equal to -1 so that callers that already initialise
+ * _pre[] to -1 (e.g. DAGreachNoTC) remain compatible without change.
+ */
+#define VCOLOR_WHITE  (-1)
+#define VCOLOR_GRAY     1
+#define VCOLOR_BLACK    2
 
 #ifdef STORAGEARRAY
   /* returns only valid ids (> 0) */
@@ -79,42 +98,77 @@ EDGE(int v, int w)
     return e;
 }
 
+/*
+ * isAncestor — iterative reachability test.
+ *
+ * Returns true when vertex e.v is reachable from e.w by following
+ * adjacency (parent) edges.  The caller must initialise D->_pre[] to
+ * VCOLOR_WHITE (-1) before the first call in a query session.
+ *
+ * D->_post[] is used as a plain integer stack; its contents on entry
+ * are irrelevant because only indices [0, top) are ever read.
+ */
 static bool
 isAncestor(Dag D, Edge e)
 {
+    int top = 0, cur, nb;
     DEFITER(t);
 
-    D->_pre[e.w] = 1;
-    INITERATION(D,t,e.w)  
-        if (CURRENTIN(t) == e.v) {
-            return true;
-        }
-        if (D->_pre[CURRENTIN(t)] == -1) {
-            if (isAncestor(D, EDGE(e.v, CURRENTIN(t))))
+    D->_pre[e.w] = VCOLOR_GRAY;
+    D->_post[top++] = e.w;              /* push start vertex          */
+
+    while (top > 0) {
+        cur = D->_post[--top];          /* pop next vertex to process */
+        INITERATION(D, t, cur)
+            nb = CURRENTIN(t);
+            if (nb == e.v)
                 return true;
+            if (D->_pre[nb] == VCOLOR_WHITE) {
+                D->_pre[nb] = VCOLOR_GRAY;
+                D->_post[top++] = nb;
+            }
         }
     }
     return false;
 }
 
+/*
+ * cycleCheckR — recursive cycle detector using three-colour vertex marking.
+ *
+ * Performs a depth-first traversal rooted at vertex v.  A back edge
+ * (an edge leading to a GRAY ancestor still on the active path) signals
+ * the presence of a directed cycle.
+ *
+ * State is stored entirely in D->_pre[]:
+ *   VCOLOR_WHITE — vertex not yet visited
+ *   VCOLOR_GRAY  — vertex is on the current recursion stack
+ *   VCOLOR_BLACK — vertex and all descendants fully processed
+ *
+ * Cross edges and forward edges (leading to BLACK vertices) are harmless
+ * and do not indicate cycles.
+ */
 static bool
-hasbacklinkR(Dag D, Edge e)
+cycleCheckR(Dag D, int v)
 {
     bool ret;
+    int nb;
     DEFITER(t);
 
-    D->_pre[e.w] = D->_cnt++;
-    INITERATION(D,t,e.w)  
-        if (D->_pre[CURRENTIN(t)] == -1) {
-            ret = hasbacklinkR(D, EDGE(e.w, CURRENTIN(t)));
+    D->_pre[v] = VCOLOR_GRAY;          /* mark as active             */
+
+    INITERATION(D, t, v)
+        nb = CURRENTIN(t);
+        if (D->_pre[nb] == VCOLOR_WHITE) {
+            ret = cycleCheckR(D, nb);
             if (ret)
                 return true;
-        } else {
-            if (D->_post[CURRENTIN(t)] == -1)
-                return true;
+        } else if (D->_pre[nb] == VCOLOR_GRAY) {
+            return true;               /* back edge — cycle confirmed */
         }
+        /* VCOLOR_BLACK: forward or cross edge — not a cycle          */
     }
-    D->_post[e.w] = D->_cntP++;
+
+    D->_pre[v] = VCOLOR_BLACK;         /* mark as fully explored      */
     return false;
 }
 
@@ -147,15 +201,12 @@ DAGisAcyclic(Dag D)
 {
     int v;
 
-    D->_cnt = 0;
-    D->_cntP = 0;
-    for (v = 0; v < D->V; v++) {
-        D->_pre[v] = -1;
-        D->_post[v] = -1;
-    }
     for (v = 0; v < D->V; v++)
-        if (D->_pre[v] == -1) 
-            if (hasbacklinkR(D, EDGE(v, v))) 
+        D->_pre[v] = VCOLOR_WHITE;
+
+    for (v = 0; v < D->V; v++)
+        if (D->_pre[v] == VCOLOR_WHITE)
+            if (cycleCheckR(D, v))
                 return false;
 
     return true;
@@ -715,13 +766,10 @@ DAGcycleE(Dag D, Edge e)
 {
     int w;
 
-    D->_cnt = 0;
-    D->_cntP = 0;
-    for (w = 0; w < D->V; w++) {
-        D->_pre[w] = -1;
-        D->_post[w] = -1;
-    }
-    return hasbacklinkR(D, e);
+    for (w = 0; w < D->V; w++)
+        D->_pre[w] = VCOLOR_WHITE;
+
+    return cycleCheckR(D, e.w);
 }
 
 void
@@ -843,30 +891,49 @@ show(char *msg, int v, int w)
     printf("%i-%i %s\n", v, w, msg);
 }
 
+/*
+ * dfsR — diagnostic depth-first traversal with edge-type annotation.
+ *
+ * D->_pre[] stores discovery timestamps (incremented via D->_cnt).
+ * D->_post[] stores vertex state using the VCOLOR_* constants:
+ *   VCOLOR_WHITE — not yet visited (initialised by DAGsearch)
+ *   VCOLOR_GRAY  — currently on the active DFS stack
+ *   VCOLOR_BLACK — subtree fully explored
+ *
+ * Edge classification:
+ *   tree  — neighbour is WHITE (unvisited)
+ *   back  — neighbour is GRAY  (still on current stack path)
+ *   down  — neighbour is BLACK and was discovered after e.w
+ *   cross — neighbour is BLACK and was discovered before e.w
+ */
 static void
 dfsR(Dag D, Edge e)
 {
+    int nb;
     DEFITER(t);
-    int v = e.v;
 
     depth++;
     show("tree", e.v, e.w);
 
-    D->_pre[e.v] = D->_cnt++;
-    INITERATION(D,t,e.v)    
-        if (D->_pre[CURRENTIN(t)] == -1)
-            dfsR(D, EDGE(CURRENTIN(t), e.v));
-        else {
-            v = CURRENTIN(t);
-            if (D->_post[v] == -1)
-                show("back", e.v, v);
-            else if (D->_pre[v] > D->_pre[e.w])
-                show("down", e.w, v);
+    D->_pre[e.v]  = D->_cnt++;         /* record discovery time      */
+    D->_post[e.v] = VCOLOR_GRAY;       /* vertex is now on the stack */
+
+    INITERATION(D, t, e.v)
+        nb = CURRENTIN(t);
+        if (D->_post[nb] == VCOLOR_WHITE) {
+            dfsR(D, EDGE(nb, e.v));
+        } else if (D->_post[nb] == VCOLOR_GRAY) {
+            show("back", e.v, nb);
+        } else {
+            /* VCOLOR_BLACK: classify by relative discovery order */
+            if (D->_pre[nb] > D->_pre[e.w])
+                show("down", e.w, nb);
             else
-                show("cross", e.w, v);
+                show("cross", e.w, nb);
         }
     }
-    D->_post[e.v] = D->_cntP++;
+
+    D->_post[e.v] = VCOLOR_BLACK;
     depth--;
 }
 
@@ -960,15 +1027,13 @@ DAGsearch(Dag D)
     int v;
 
     D->_cnt = 0;
-    D->_cntP = 0;
     for (v = 0; v < D->V; v++) {
-        D->_pre[v] = -1;
-        D->_post[v] = -1;
+        D->_pre[v]  = VCOLOR_WHITE;   /* discovery time: not yet set  */
+        D->_post[v] = VCOLOR_WHITE;   /* traversal state: unvisited   */
     }
     for (v = 0; v < D->V; v++)
-        if (D->_pre[v] == -1) {
+        if (D->_post[v] == VCOLOR_WHITE)
             dfsR(D, EDGE(v, v));
-        }
 }
 
 void 

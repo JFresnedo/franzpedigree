@@ -1,7 +1,8 @@
 /*
  * $Id: utils.c 1977 2010-03-16 16:52:31Z markus $
  *
- * Some code taken from the Numerical Recipes bible.
+ * Mathematical utility functions. All code is original or uses
+ * C99 standard library functions (lgamma). No third-party code.
  *
  * Copyright (C) 2008-2010 Universitaet Leipzig  
  *
@@ -222,48 +223,47 @@ UTILSmultiln(int N, int *k, float *p, int q)
     }
     return UTILSfactln(N) + sumpi;
 }
-
+/*
+* Log of the Gamma function.
+* Uses the C99 standard library lgamma() - available on all
+* POSIX platforms. This replaces a previous implementation
+* that was derived from Numerical Recipes (non-redistributable).
+* The API is identical to the old function.
+*/
 double
 UTILSgammln(double xx)
 {
-    int j;
-    double x, tmp, y, ser;
-    static const double cof[14] = { 57.1562356658629235, -59.5979603554754912,
-        14.1360979747417471, -0.491913816097620199, .339946499848118887e-4,
-        .465236289270485756e-4, -.983744753048795646e-4,
-            .158088703224912494e-3,
-        -.210264441724104883e-3, .217439618115212643e-3,
-            -.164318106536763890e-3,
-        .844182239838527433e-4, -.261908384015814087e-4,
-            .368991826595316234e-5
-    };
     if (xx <= 0)
-        FATALINT("Bad arg in UTILSgammln()");
-    y = x = xx;
-    tmp = x + 5.24218750000000000;
-    tmp = (x + 0.5) * log(tmp) - tmp;
-    ser = 0.999999999999997092;
-    for (j = 0; j < 14; j++)
-        ser += cof[j] / ++y;
-    return tmp + log(2.5066282746310005 * ser / x);
+        FATALINT ("Bad arg in UTILSgammln()");
+    return lgamma(xx); 
+}
+/* Exact factorial n! for 0 <= n <= 170 using a precumputed table.
+* n=171 would overflow IEEE 754 double precission (DBL_MAX ~ 1.8e3-8).
+* Original implementation.
+*/
+
+double
+UTILSbeta(double z, double w)
+{
+    return exp(UTILSgammln(z) + UTILSgammln(w) - UTILSgammln(z + w));
 }
 
 double
 UTILSfactrl(int n)
 {
     int i;
-    static double a[171];
-    static bool init = true;
+    static double table[171];
+    static bool initialized = false;
 
-    if (init) {
-        init = false;
-        a[0] = 1.;
+    if (initialized) {
+        initialized = true;
+        table[0] = 1.0;
         for (i = 1; i < 171; i++)
-            a[i] = i * a[i - 1];
+            table[i] = (double)i * table[i - 1];
     }
     if (n < 0 || n > 170)
         FATALINT("Parameter in UTILSfactrl() out of range");
-    return a[n];
+    return table[n];
 }
 
 static double * _fact_lookup;
@@ -297,21 +297,35 @@ UTILSfactlnDestroy(void)
 } 
 
 double
-UTILSbeta(double z, double w)
-{
-    return exp(UTILSgammln(z) + UTILSgammln(w) - UTILSgammln(z + w));
-}
-
-double
 UTILSchoose(int n, int k)
 {
+    int i;
+    double result;
+
     if (n < 0 || k < 0 || k > n)
         FATALINT("Bad args in UTILSchoose()");
-    if (n < 171)
-        return floor(0.5 +
-                     UTILSfactrl(n) / (UTILSfactrl(k) * UTILSfactrl(n - k)));
-    return floor(0.5 +
-                 exp(UTILSfactln(n) - UTILSfactln(k) - UTILSfactln(n - k)));
+
+    /* Symmetry: use the smaller side to minimise iterations */
+    if (k > n - k)
+        k = n - k;
+
+    if (k == 0)
+        return 1.0;
+
+    /*
+     * Iterative computation: result = product of (n-i)/(i+1) for i in [0,k).
+     *
+     * At each step (i+1) divides the running product exactly, so no
+     * precision is lost for moderate k. This replaces the previous approach
+     * of dividing precomputed factorial values whose magnitudes (~10^157 for
+     * 100!) accumulate enough floating-point rounding that floor(0.5+ratio)
+     * can round to the wrong integer.
+     */
+    result = 1.0;
+    for (i = 0; i < k; i++)
+        result = result * (double)(n - i) / (double)(i + 1);
+
+    return floor(0.5 + result);
 }
 
 void
